@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>萤火虫存储 - Firefly Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background: #0a0a1a; min-height: 100vh; }
+        .firefly-glow {
+            box-shadow: 0 0 20px rgba(255, 200, 50, 0.15), 0 0 60px rgba(255, 200, 50, 0.05);
+        }
+        .firefly-glow-strong {
+            box-shadow: 0 0 30px rgba(255, 200, 50, 0.3), 0 0 80px rgba(255, 200, 50, 0.1);
+        }
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.dragover {
+            border-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.08);
+        }
+        .firefly { position: fixed; width: 4px; height: 4px; background: #fbbf24; border-radius: 50%; pointer-events: none; animation: float 6s ease-in-out infinite; opacity: 0.6; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) translateX(0); opacity: 0.3; }
+            50% { transform: translateY(-30px) translateX(15px); opacity: 0.8; }
+        }
+        .progress-bar { transition: width 0.3s ease; }
+        .file-card { transition: all 0.3s ease; }
+        .file-card:hover { transform: translateY(-2px); }
+        .copy-btn:active { transform: scale(0.95); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.4s ease; }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateX(-50%) translateY(0); } to { opacity: 0; transform: translateX(-50%) translateY(20px); } }
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(251, 191, 36, 0.9); color: #1a1a2e; padding: 10px 24px;
+            border-radius: 999px; font-size: 14px; font-weight: 500; z-index: 100;
+            box-shadow: 0 4px 20px rgba(251, 191, 36, 0.3);
+            animation: toastIn 0.3s ease;
+        }
+        .toast.hide { animation: toastOut 0.3s ease forwards; }
+    </style>
+</head>
+<body class="text-gray-200">
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Background fireflies -->
+<div class="firefly" style="top:10%;left:15%;animation-delay:0s"></div>
+<div class="firefly" style="top:20%;left:80%;animation-delay:1.5s"></div>
+<div class="firefly" style="top:60%;left:10%;animation-delay:3s"></div>
+<div class="firefly" style="top:75%;left:70%;animation-delay:4.5s"></div>
+<div class="firefly" style="top:40%;left:90%;animation-delay:2s"></div>
+
+<div class="max-w-2xl mx-auto px-4 py-12 relative z-10">
+    <!-- Header -->
+    <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-3 mb-3">
+            <i class="fas fa-fire text-amber-400 text-3xl"></i>
+            <h1 class="text-3xl font-bold text-amber-400">萤火虫存储</h1>
+        </div>
+        <p class="text-gray-500 text-sm">临时文件存储，到期自动销毁 · 支持密钥永久保存 · 上传即得访问链接与二维码</p>
+    </div>
+
+    <!-- Upload Area -->
+    <div id="uploadArea" class="drop-zone border-2 border-dashed border-gray-700 rounded-2xl p-10 text-center cursor-pointer hover:border-amber-500/50 firefly-glow mb-6">
+        <i class="fas fa-cloud-arrow-up text-5xl text-gray-600 mb-4"></i>
+        <p class="text-gray-400 text-lg mb-2">拖拽文件到这里，或 <span class="text-amber-400">点击选择</span></p>
+        <p class="text-gray-600 text-sm">最大 10GB · 支持任意格式</p>
+        <input type="file" id="fileInput" multiple class="hidden">
+    </div>
+
+    <!-- Expiry Selector -->
+    <div class="mb-6">
+        <div class="flex flex-wrap items-center justify-center gap-2">
+            <span class="text-gray-500 text-sm">保存时间：</span>
+            <div class="flex flex-wrap justify-center gap-1" id="expirySelector">
+                <button data-hours="1" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400 transition">1小时</button>
+                <button data-days="1" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400 transition">1天</button>
+                <button data-days="3" class="px-3 py-1 rounded-full text-xs bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/50 transition">3天</button>
+                <button data-days="7" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400 transition">7天</button>
+                <button data-days="30" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400 transition">30天</button>
+                <button data-permanent="1" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400 transition border border-amber-500/30">
+                    <i class="fas fa-infinity mr-1"></i>永久
+                </button>
+            </div>
+        </div>
+
+        <!-- Permanent Key Input（选择「永久」时显示） -->
+        <div id="permKeyWrap" class="hidden mt-3 flex flex-wrap items-center justify-center gap-2 fade-in">
+            <i class="fas fa-key text-amber-400 text-xs"></i>
+            <input type="password" id="permKeyInput" autocomplete="off" placeholder="请输入永久保存密钥"
+                   class="bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 w-56 focus:outline-none focus:border-amber-500/50">
+            <button type="button" id="permKeyToggle" class="px-2 py-1.5 text-xs text-gray-500 hover:text-amber-400 transition">
+                <i class="fas fa-eye"></i>
+            </button>
+            <span id="permKeyHint" class="text-xs text-gray-600">永久文件将归档至年月目录，不会自动销毁</span>
+        </div>
+    </div>
+
+    <!-- Upload Progress -->
+    <div id="progressSection" class="hidden mb-6">
+        <div class="bg-gray-800/50 rounded-xl p-4 firefly-glow">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm text-gray-400" id="progressText">上传中...</span>
+                <span class="text-sm text-amber-400" id="progressPercent">0%</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2">
+                <div id="progressBar" class="progress-bar bg-gradient-to-r from-amber-500 to-yellow-400 h-2 rounded-full" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Uploaded Files -->
+    <div id="fileList" class="space-y-3"></div>
+
+    <!-- Upload History -->
+    <div class="mt-10">
+        <button id="historyToggle" class="w-full flex items-center justify-between px-4 py-3 bg-gray-800/40 rounded-xl hover:bg-gray-800/60 transition" onclick="toggleHistory()">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-clock-rotate-left text-gray-500"></i>
+                <span class="text-sm text-gray-400">上传历史</span>
+                <span id="historyCount" class="text-xs text-gray-600">(0)</span>
+            </div>
+            <i class="fas fa-chevron-down text-gray-600 text-xs transition-transform" id="historyArrow"></i>
+        </button>
+        <div id="historySection" class="hidden mt-3 space-y-2">
+            <div id="historyList"></div>
+            <button id="clearHistoryBtn" class="w-full py-2 text-xs text-gray-600 hover:text-red-400 transition" onclick="clearHistory()">
+                <i class="fas fa-trash-can mr-1"></i>清空历史
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="text-center py-6 text-gray-700 text-xs">
+    &copy;2026 Powered By Haze
+</div>
+
+<!-- File Result Template -->
+<template id="fileCardTemplate">
+    <div class="file-card bg-gray-800/60 rounded-xl p-4 firefly-glow fade-in border border-gray-700/50">
+        <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-file text-amber-400"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-200 truncate" id="fileName"></p>
+                <p class="text-xs text-gray-500 mt-1" id="fileMeta"></p>
+                <div class="flex items-center gap-2 mt-3">
+                    <input id="fileUrl" class="flex-1 bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-400 focus:outline-none focus:border-amber-500/50" readonly>
+                    <button class="copy-btn px-3 py-1.5 bg-amber-500/20 text-amber-400 rounded-lg text-xs hover:bg-amber-500/30 transition" onclick="copyUrl(this)">
+                        <i class="fas fa-copy mr-1"></i>复制
+                    </button>
+                    <button class="px-3 py-1.5 bg-gray-700/50 text-gray-400 rounded-lg text-xs hover:bg-gray-700 transition" onclick="showQr(this)">
+                        <i class="fas fa-qrcode"></i>
+                    </button>
+                    <button class="px-3 py-1.5 bg-gray-700/50 text-gray-400 rounded-lg text-xs hover:bg-gray-700 transition" onclick="previewFile(this)">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- QR Code Modal -->
+        <div class="qr-section hidden mt-4 pt-4 border-t border-gray-700/50 text-center">
+            <div id="qrCode" class="inline-block bg-white p-3 rounded-lg mb-2"></div>
+            <p class="text-xs text-gray-500">手机扫码访问</p>
+        </div>
+    </div>
+</template>
+
+<!-- Preview Modal -->
+<div id="previewModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="closePreview(event)">
+    <div class="max-w-4xl max-h-full relative">
+        <button class="absolute -top-10 right-0 text-gray-400 hover:text-white" onclick="closePreview()"><i class="fas fa-xmark text-xl"></i></button>
+        <div id="previewContent" class="rounded-xl overflow-hidden"></div>
+    </div>
+</div>
+
+<!-- QR Modal -->
+<div id="qrModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="closeQr(event)">
+    <div class="bg-gray-800 rounded-2xl p-6 text-center relative firefly-glow-strong">
+        <button class="absolute top-3 right-3 text-gray-500 hover:text-white" onclick="closeQr()"><i class="fas fa-xmark"></i></button>
+        <div id="qrModalContent" class="mb-3"></div>
+        <p class="text-sm text-gray-400">手机扫码访问</p>
+    </div>
+</div>
+
+<script>
+// Simple QR code generator using a lightweight approach
+function generateQR(text, size) {
+    // Use a simple QR code API
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = size;
+    canvas.height = size;
+
+    // Use QR Server API for simplicity
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&bgcolor=ffffff&color=000000`;
+
+    return new Promise((resolve) => {
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, size, size);
+            resolve(canvas);
+        };
+        img.onerror = () => resolve(null);
+    });
+}
+
+let selectedExpiry = { days: 3, hours: 0, permanent: false };
+
+const permKeyWrap = document.getElementById('permKeyWrap');
+const permKeyInput = document.getElementById('permKeyInput');
+const PERM_KEY_STORE = 'firefly_perm_key';
+
+// 密钥本地记忆，避免重复输入（仅本机浏览器可见）
+try { permKeyInput.value = localStorage.getItem(PERM_KEY_STORE) || ''; } catch (e) {}
+permKeyInput.addEventListener('change', () => {
+    try { localStorage.setItem(PERM_KEY_STORE, permKeyInput.value.trim()); } catch (e) {}
+});
+
+// 密钥显示/隐藏
+document.getElementById('permKeyToggle').addEventListener('click', () => {
+    const show = permKeyInput.type === 'password';
+    permKeyInput.type = show ? 'text' : 'password';
+    document.querySelector('#permKeyToggle i').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+});
+
+// Expiry selector
+document.getElementById('expirySelector').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#expirySelector button').forEach(b => {
+        b.classList.remove('bg-amber-500/20', 'text-amber-400', 'ring-1', 'ring-amber-500/50');
+        b.classList.add('bg-gray-800', 'text-gray-400');
+    });
+    btn.classList.remove('bg-gray-800', 'text-gray-400');
+    btn.classList.add('bg-amber-500/20', 'text-amber-400', 'ring-1', 'ring-amber-500/50');
+
+    if (btn.dataset.permanent) {
+        selectedExpiry = { days: 0, hours: 0, permanent: true };
+        permKeyWrap.classList.remove('hidden');
+        permKeyInput.focus();
+    } else {
+        selectedExpiry = { days: 0, hours: 0, permanent: false };
+        permKeyWrap.classList.add('hidden');
+        if (btn.dataset.hours) {
+            selectedExpiry.hours = parseInt(btn.dataset.hours);
+        } else {
+            selectedExpiry.days = parseInt(btn.dataset.days);
+        }
+    }
+});
+
+// Drag & drop
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+function handleFiles(files) {
+    Array.from(files).forEach(file => uploadFile(file));
+}
+
+function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (selectedExpiry.permanent) {
+        const key = permKeyInput.value.trim();
+        if (!key) {
+            showToast('请输入永久保存密钥');
+            permKeyWrap.classList.remove('hidden');
+            permKeyInput.focus();
+            return;
+        }
+        formData.append('permanent', 'true');
+        formData.append('permKey', key);
+    } else {
+        formData.append('expiryDays', selectedExpiry.days);
+        if (selectedExpiry.hours > 0) {
+            formData.append('expiryHours', selectedExpiry.hours);
+        }
+    }
+
+    const section = document.getElementById('progressSection');
+    const bar = document.getElementById('progressBar');
+    const text = document.getElementById('progressText');
+    const pct = document.getElementById('progressPercent');
+
+    section.classList.remove('hidden');
+    text.textContent = `上传 ${file.name}...`;
+    bar.style.width = '0%';
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+            const p = Math.round(e.loaded / e.total * 100);
+            bar.style.width = p + '%';
+            pct.textContent = p + '%';
+        }
+    });
+    xhr.addEventListener('load', () => {
+        section.classList.add('hidden');
+        let res = null;
+        try { res = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && res && res.success !== false) {
+            addFileCard(res);
+        } else {
+            showToast((res && res.message) ? res.message : ('上传失败: ' + xhr.status));
+            if (xhr.status === 403) {
+                permKeyWrap.classList.remove('hidden');
+                permKeyInput.focus();
+                permKeyInput.select();
+            }
+        }
+    });
+    xhr.addEventListener('error', () => {
+        section.classList.add('hidden');
+        showToast('上传出错');
+    });
+    xhr.open('POST', '/channel/firefly-store/upload');
+    xhr.send(formData);
+}
+
+function addFileCard(data) {
+    const template = document.getElementById('fileCardTemplate');
+    const card = template.content.cloneNode(true);
+    const el = card.querySelector('.file-card');
+
+    el.querySelector('#fileName').textContent = data.name;
+    el.querySelector('#fileMeta').innerHTML = data.permanent
+        ? formatSize(data.size) + ' · <span class="text-amber-400 font-medium">永久保存</span>'
+        : formatSize(data.size) + ' · 保存至 ' + formatDate(data.expiryTime);
+    el.querySelector('#fileUrl').value = data.url;
+    el.dataset.code = data.code;
+    el.dataset.url = data.url;
+    el.dataset.name = data.name;
+
+    document.getElementById('fileList').prepend(el);
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function copyUrl(btn) {
+    const input = btn.closest('.file-card').querySelector('#fileUrl');
+    navigator.clipboard.writeText(input.value).then(() => {
+        btn.innerHTML = '<i class="fas fa-check mr-1"></i>已复制';
+        showToast('链接已复制到剪贴板');
+        setTimeout(() => btn.innerHTML = '<i class="fas fa-copy mr-1"></i>复制', 1500);
+    });
+}
+
+async function showQr(btn) {
+    const card = btn.closest('.file-card');
+    const url = card.dataset.url;
+    const qrSection = card.querySelector('.qr-section');
+    const qrDiv = card.querySelector('#qrCode');
+
+    if (!qrSection.classList.contains('hidden')) {
+        qrSection.classList.add('hidden');
+        return;
+    }
+
+    // Generate QR inline
+    qrDiv.innerHTML = '';
+    const canvas = await generateQR(url, 150);
+    if (canvas) qrDiv.appendChild(canvas);
+    qrSection.classList.remove('hidden');
+}
+
+function previewFile(btn) {
+    const card = btn.closest('.file-card');
+    const url = card.dataset.url;
+    const name = card.dataset.name;
+    const modal = document.getElementById('previewModal');
+    const content = document.getElementById('previewContent');
+
+    const ext = name.split('.').pop().toLowerCase();
+    const imageExts = ['jpg','jpeg','png','gif','webp','svg','bmp'];
+    const videoExts = ['mp4','webm','ogg','mov'];
+    const audioExts = ['mp3','wav','ogg','m4a'];
+
+    if (imageExts.includes(ext)) {
+        content.innerHTML = `<img src="${url}" class="max-w-full max-h-[80vh] rounded-lg">`;
+    } else if (videoExts.includes(ext)) {
+        content.innerHTML = `<video src="${url}" controls class="max-w-full max-h-[80vh] rounded-lg"></video>`;
+    } else if (audioExts.includes(ext)) {
+        content.innerHTML = `<div class="bg-gray-800 rounded-2xl p-8 text-center"><i class="fas fa-music text-4xl text-amber-400 mb-4"></i><audio src="${url}" controls class="w-80"></audio></div>`;
+    } else {
+        content.innerHTML = `<iframe src="${url}" class="w-[80vw] h-[80vh] rounded-lg bg-white"></iframe>`;
+    }
+    modal.classList.remove('hidden');
+}
+
+function closePreview(e) {
+    if (!e || e.target === document.getElementById('previewModal')) {
+        document.getElementById('previewModal').classList.add('hidden');
+        document.getElementById('previewContent').innerHTML = '';
+    }
+}
+
+function closeQr(e) {
+    if (!e || e.target === document.getElementById('qrModal')) {
+        document.getElementById('qrModal').classList.add('hidden');
+    }
+}
+
+// ========== Upload History ==========
+const HISTORY_KEY = 'firefly_history';
+const MAX_HISTORY = 50;
+
+function getHistory() {
+    try {
+        return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    } catch { return []; }
+}
+
+function saveHistory(history) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function addToHistory(data) {
+    let history = getHistory();
+    history.unshift({
+        code: data.code,
+        name: data.name,
+        size: data.size,
+        url: data.url,
+        permanent: !!data.permanent,
+        expiryTime: data.expiryTime,
+        uploadTime: new Date().toISOString()
+    });
+    if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+    saveHistory(history);
+    renderHistory();
+}
+
+function renderHistory() {
+    const history = getHistory();
+    const list = document.getElementById('historyList');
+    const count = document.getElementById('historyCount');
+    count.textContent = `(${history.length})`;
+
+    if (history.length === 0) {
+        list.innerHTML = '<p class="text-center text-gray-600 text-xs py-4">暂无上传记录</p>';
+        document.getElementById('clearHistoryBtn').classList.add('hidden');
+        return;
+    }
+    document.getElementById('clearHistoryBtn').classList.remove('hidden');
+
+    list.innerHTML = history.map(item => `
+        <div class="flex items-center gap-3 px-3 py-2 bg-gray-800/30 rounded-lg hover:bg-gray-800/50 transition group">
+            <i class="fas fa-file text-gray-600 text-xs"></i>
+            <div class="flex-1 min-w-0">
+                <p class="text-xs text-gray-400 truncate">${escapeHtml(item.name)}</p>
+                <p class="text-xs text-gray-600">${formatSize(item.size)} · ${item.permanent ? '<span class="text-amber-400/80">永久保存</span>' : formatDate(item.expiryTime)}</p>
+            </div>
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                <button class="px-2 py-1 text-xs text-gray-500 hover:text-amber-400 transition" onclick="copyText('${escapeAttr(item.url)}')">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <button class="px-2 py-1 text-xs text-gray-500 hover:text-red-400 transition" onclick="removeFromHistory('${item.code}')">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function removeFromHistory(code) {
+    let history = getHistory();
+    history = history.filter(item => item.code !== code);
+    saveHistory(history);
+    renderHistory();
+}
+
+function clearHistory() {
+    if (confirm('确定清空所有上传历史？')) {
+        localStorage.removeItem(HISTORY_KEY);
+        renderHistory();
+    }
+}
+
+function toggleHistory() {
+    const section = document.getElementById('historySection');
+    const arrow = document.getElementById('historyArrow');
+    section.classList.toggle('hidden');
+    arrow.style.transform = section.classList.contains('hidden') ? '' : 'rotate(180deg)';
+}
+
+function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => showToast('链接已复制到剪贴板'));
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.remove('hidden', 'hide');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.classList.add('hide');
+        setTimeout(() => toast.classList.add('hidden'), 300);
+    }, 2000);
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function escapeAttr(str) {
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// Add to history after upload
+const originalAddFileCard = addFileCard;
+addFileCard = function(data) {
+    originalAddFileCard(data);
+    addToHistory(data);
+};
+
+// Init history on load
+renderHistory();
+</script>
+</body>
+</html>
