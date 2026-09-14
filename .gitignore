@@ -40,3 +40,5 @@ Thumbs.db
 
 # Agent skill (kept local only)
 firefly-upload/
+src/main/resources/application-dev.yml
+src/main/resources/application-prod.yml
